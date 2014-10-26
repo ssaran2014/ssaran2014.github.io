@@ -1,0 +1,65 @@
+---
+title: "Machine Learning Course Project"
+author: "SS"
+date: "Sunday, October 26, 2014"
+output: html_document
+---
+
+This project relates to performance feedback on exercises. Many devices measure how much of an exercise you do. Few devices provide feedback on how accurately you do the exercises. This project attempts to measure accuracy.
+
+In a study to measure proper weightlifting technique, six subjects wore sensors in their arm, wrist and belt and had an additional sensor on a dumbbell. They did 5 movements -- one correctly and the others incorrectly. The study can be found here: Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+See <http://groupware.les.inf.puc-rio.br/har#ixzz3HGq9J7MU>
+
+Here, we train a model based on sensor data and correct and incorrect movements. Then we attempt to predict the movement based only on the sensor data. 
+
+**Describing the model building process**
+
+The training data consists on 160 variables and choosing the right number of variables is critical. I narrowed down 160 variables to 27 in the following way. (1) Person identification data, time data and window data were removed. They are not useful.
+(2) Only the variables that had values in the testing data were selected. This reduced the data set to 53 variables. 
+(3) As a crosscheck, I also read the paper referenced above and selected the variables hinted by the authors to have the most impact. See Section 5.1. I got 53 variables, which may not have been the same as the 53 mentioned earlier, but the number was in the ball park. 
+(4) I then created a model using randomForest using 10% of the pml_training file data. The number of trees was set to 100 to keep computing time reasonable (<2 min). The resulting accuracy was in the low 90% range. 
+(5) I identified the imporatant variables using varImp, and narrowed the variables to 27. The accuracy was about the same as when I used 53 variables. So I kept just the 27 variables. 
+(6) I then created models using 20%, 30% and 40% of the training data in pml_training. I also increased the number of trees to 200, and then to 300. The accuracy kept increasing to high 90% range and leveled off when using 40% of the data. 
+
+In summary, the final model was chosen with 27 variables. It was fit using 40% of the training data, using the randomForest function with default resampling,  and 300 trees. The accuracy on the testing portion of the pml_training file was 98.5%.
+
+
+```{r}
+library(caret); library(randomForest)
+pml_training <- read.table("pml-training.csv", header=TRUE, sep=",",na.strings="NA") #reading file
+pml_testing <- read.table("pml-testing.csv", header=TRUE, sep=",",na.strings="NA") #reading file
+set.seed(3333)
+#Iteration 4 ##FINAL MODEL
+keep4 <- c(8:10, 39, 42, 44:46, 60, 64, 68, 84, 102, 114, 117:123, 140, 154, 157:160) #choosing the most relevant variables. varImp run on Iteration 3.
+inTrain4 <- createDataPartition(y=pml_training[ , keep4]$classe, p=0.4, list=FALSE) #training set using 40% of pml_training
+training4 <- pml_training[inTrain4, keep4]
+testing4 <- pml_training[-inTrain4, keep4]
+modFit4 <- randomForest(formula = classe ~ ., data=training4, ntree=300,
+                        prox=TRUE, importance=TRUE, na.action=na.fail
+                        ) #Little difference in accuracy using ntree=200 v 300. 
+modFit4.predict <- predict(modFit4, newdata = testing4)
+confusionMatrix(modFit4.predict, testing4$classe)
+
+```
+**The results show that the accuracy is 98.5%.** 
+
+These are the variables that were chosen. Their importance to the model is identified below.
+```{r}
+varImp(modFit4)
+```
+
+
+**How is cross validation used**
+The randomForest function in the r package of the same name performs cross validation automatically. By defaul, the number of variables randomly chosen to be tested at any node is sqrt(number of variables). The function then creates a number of trees -- in our case 300 trees. These trees are then averaged to give the final model. 
+
+**Expected out of sample error**
+40% of the pml_training data was used to train the model. The model was then tested on remainder 60% of the data. The accuracy was 98.5%. So the estimated out of sample error is 1.5%.
+
+**Using the model on the testing data**
+```{r}
+#Doing the same pre-processing on the testing file
+pml_testing4 <- pml_testing[ ,keep4]
+#testing the model on the pml_training file
+modFit4.predict <- predict(modFit4, newdata = pml_testing4)
+modFit4.predict
+```
